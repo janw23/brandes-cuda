@@ -16,9 +16,12 @@ def _index_to_edge(num_nodes, index):
 def generate_graph(num_nodes, num_edges):
     assert num_edges <= _num_all_edges(num_edges)
 
-    indices = random.sample(range(_num_all_edges(num_nodes)), num_edges)
-    edges = map(lambda idx: _index_to_edge(num_nodes, idx), indices)
-    return list(edges)
+    edges = map(lambda idx: _index_to_edge(num_nodes, idx), range(_num_all_edges(num_nodes)))
+    edges = filter(lambda e: e[0] != e[1], edges)
+    edges = list(edges)
+    edges = random.sample(edges, num_edges)
+    assert len(edges) == num_edges
+    return edges
 
 
 def morph_graph(edges):
