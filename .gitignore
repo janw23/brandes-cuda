@@ -7,3 +7,7 @@
 *.fatbin
 
 /brandes-verify/
+.vscode/
+
+# binary
+brandes
