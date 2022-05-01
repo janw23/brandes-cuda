@@ -5,7 +5,7 @@ from cv2 import remap
 
 
 def _num_all_edges(num_nodes):
-    return (1 + num_nodes) * num_nodes // 2
+    return (num_nodes - 1) * num_nodes // 2
 
 def _index_to_edge(num_nodes, index):
     assert index < _num_all_edges(num_nodes)
