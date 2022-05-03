@@ -5,8 +5,11 @@
 #include <algorithm>
 #include <queue>
 #include <stack>
+#include <cassert>
 
 using namespace std;
+
+// TODO correct int data types
 
 static void print_usage() {
     cout << "Program usage: ./brandes input-file output-file" << endl;
@@ -36,11 +39,16 @@ static vector<pair<int, int>> load_edges(string path) {
     return edges;
 } 
 
-static vector<float> compute_betweeness(const vector<pair<int, int>> &edges) {
+static int num_verts(const vector<pair<int, int>> &edges) {
     // Compute number of vertices based on maximum vertex label.
     int n = 0;
     for (const auto &edge : edges) n = max({n, edge.first, edge.second});
     n++;
+    return n;
+}
+
+static vector<float> compute_betweeness(const vector<pair<int, int>> &edges) {
+    int n = num_verts(edges);
 
     // Create graph as adjacency list, based on edges.
     vector<vector<int>> graph(n);
@@ -112,9 +120,46 @@ static void save_to_file(string path, const vector<float> &centrality) {
     ofs.close();
 }
 
+// Helper function which converts graph into adjacenty lists representation.
+static vector<vector<int>> adjacency_lists(const vector<pair<int, int>> &edges) {
+    int n = num_verts(edges);
+    vector<vector<int>> adjs(n);
+
+    for (auto edge : edges) {
+        adjs[edge.first].push_back(edge.second);
+        adjs[edge.second].push_back(edge.first);
+    }
+
+    return adjs;
+}
+
+struct VirtualCSR {
+    vector<int> vmap;
+    vector<int> vptrs;
+    vector<int> adjs;
+    vector<int> ptrs; // TODO remove
+
+    VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
+        auto graph = adjacency_lists(edges);
+        
+        for (int v = 0; v < graph.size(); v++) { // iterate over real verts
+            int u = 0; // index of adjacent vert in v's adjacency list
+            while (u < graph[v].size()) {
+                vmap.push_back(v); // map new virtual vert to real vert v
+                vptrs.push_back(adjs.size()); // mark the beginning of virtual vert's adjacency list
+                for (int deg = 0; deg < mdeg && u < graph[v].size(); deg++, u++) {
+                    adjs.push_back(graph[v][u]);
+                }
+            }
+        }
+    }
+};
+
 int main(int argc, char *argv[]) {
     check_args(argc, argv);
     auto edges = load_edges(argv[1]);
+    VirtualCSR vcsr(edges, 4);
+
     auto betweeness = compute_betweeness(edges);
     save_to_file(argv[2], betweeness);
 
