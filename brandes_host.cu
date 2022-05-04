@@ -4,7 +4,7 @@
 
 using namespace std;
 
-static int num_verts(const vector<pair<int, int>> &edges) {
+int num_verts(const vector<pair<int, int>> &edges) {
     // Compute number of vertices based on maximum vertex label.
     int n = 0;
     for (const auto &edge : edges) n = max({n, edge.first, edge.second});
@@ -38,4 +38,6 @@ host::VirtualCSR::VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
             }
         }
     }
+
+    vptrs.push_back(adjs.size()); // add guard at the end of vptrs
 }

@@ -11,7 +11,6 @@
 #include <stack>
 #include <cassert>
 
-
 using namespace std;
 
 // TODO correct int data types
@@ -43,14 +42,6 @@ static vector<pair<int, int>> load_edges(string path) {
     ifs.close();
     return edges;
 } 
-
-static int num_verts(const vector<pair<int, int>> &edges) {
-    // Compute number of vertices based on maximum vertex label.
-    int n = 0;
-    for (const auto &edge : edges) n = max({n, edge.first, edge.second});
-    n++;
-    return n;
-}
 
 static vector<float> compute_betweeness(const vector<pair<int, int>> &edges) {
     int n = num_verts(edges);
@@ -125,19 +116,84 @@ static void save_to_file(string path, const vector<float> &centrality) {
     ofs.close();
 }
 
+struct DeviceBool {
+    bool *device_data;
+
+    DeviceBool(bool initial) {
+        HANDLE_ERROR(cudaMalloc(&device_data, sizeof(bool)));
+        set_value(initial); // default value
+    }
+
+    DeviceBool() : DeviceBool(false) {}
+
+    ~DeviceBool() {
+        HANDLE_ERROR(cudaFree(device_data));
+        device_data = NULL;
+    }
+
+    void set_value(bool val) {
+        HANDLE_ERROR(cudaMemcpy(device_data, &val, sizeof(bool), cudaMemcpyHostToDevice));
+    }
+
+    bool get_value() {
+        bool val;
+        HANDLE_ERROR(cudaMemcpy(&val, device_data, sizeof(bool), cudaMemcpyDeviceToHost));
+        return val;
+    }
+};
+
+// Returns grid_size based on the overall required number of threads and block size.
+static int grid_size(int min_threads_count, int block_size) {
+    return (min_threads_count + block_size - 1) / block_size;
+}
+
+static vector<float> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
+    host::VirtualCSR host_vcsr(edges, 4);
+    device::GraphDataVirtual gdata(move(edges), 4); // this moves data to device
+
+    const int block_size = 512; // TODO
+
+    // ALGORITHM BEGIN
+    DeviceBool cont;
+
+    for (int s = 0; s < gdata.num_real_verts; s++) { // for each vertex as a source
+        // Reset values, because they are source-specific.
+        {
+            static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+            bc_virtual_initialize<<<num_blocks, block_size>>>(gdata, s);
+            HANDLE_ERROR(cudaPeekAtLastError());
+        }
+
+        // Run forward phase.
+        int layer = 0;
+        do {
+            cont.set_value(false);
+            {
+                static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
+                bc_virtual_forward<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
+                HANDLE_ERROR(cudaPeekAtLastError());
+            }
+            layer++;
+        } while(cont.get_value());
+
+        // Run backward phase
+        // TODO
+
+        // Update bc values.
+        // TODO
+    }
+    
+    // ALGORITHM END
+
+    gdata.free();
+
+    return vector<float>(2);
+}
+
 int main(int argc, char *argv[]) {
     check_args(argc, argv);
     auto edges = load_edges(argv[1]);
-    
-    host::VirtualCSR host_vcsr(edges, 4);
-    device::VirtualCSR device_vcsr(move(host_vcsr)); // this moves mem from host to device
-
-    bc_virtual_forward<<<1,1>>>(device_vcsr, 0, NULL);
-    HANDLE_ERROR(cudaPeekAtLastError());
-
-    device_vcsr.free();
-
-    auto betweeness = compute_betweeness(edges);
+    auto betweeness = betweeness_on_gpu(move(edges));
     save_to_file(argv[2], betweeness);
 
     return 0;

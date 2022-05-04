@@ -14,4 +14,6 @@ namespace host {
     };
 }
 
+int num_verts(const std::vector<std::pair<int, int>> &edges);
+
 #endif // __BRANDES_HOST_CUH__
