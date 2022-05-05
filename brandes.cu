@@ -30,7 +30,7 @@ static vector<pair<int, int>> load_edges(string path) {
     ifstream ifs;
     ifs.open(path);
     if(!ifs.is_open()) {
-        cerr << "Cannot open file \"" << path << "\"." << endl;
+        cout << "Cannot open file \"" << path << "\"." << endl;
         exit(1);
     }
 
@@ -43,69 +43,12 @@ static vector<pair<int, int>> load_edges(string path) {
     return edges;
 } 
 
-static vector<float> compute_betweeness(const vector<pair<int, int>> &edges) {
-    int n = num_verts(edges);
-
-    // Create graph as adjacency list, based on edges.
-    vector<vector<int>> graph(n);
-    for (const auto &edge : edges) {
-        graph[edge.first].push_back(edge.second);
-        graph[edge.second].push_back(edge.first);
-    }
-
-    // Based on https://kops.uni-konstanz.de/bitstream/handle/123456789/5739/algorithm.pdf
-    // Compute centralities of each vertex.
-    vector<float> centrality(n);
-    for (int s = 0; s < n; s++) {
-        queue<int> que; // BFS queue
-        stack<int> stk; // verts ordered by distance from source
-        vector<vector<int>> preds(n); // list of predecessors of each vertex
-        vector<int> num_paths(n); // number of paths from source to each vertex
-        vector<int> dist(n); // distance from source to each vertex
-        num_paths[s] = 1; // there's 1 path to oneself
-        fill(dist.begin(), dist.end(), -1); // allows dist to act as 'visited' marker
-        dist[s] = 0; // dist to oneself is 0
-
-        que.push(s);
-        while(!que.empty()) {
-            auto v = que.front();
-            que.pop();
-            stk.push(v);
-
-            for (auto w : graph[v]) {
-                if (dist[w] < 0) { // w visited for the first time
-                    que.push(w);
-                    dist[w] = dist[v] + 1;
-                }
-                if (dist[w] == dist[v] + 1) { // shortest path from source to w
-                    num_paths[w] += num_paths[v];
-                    preds[w].push_back(v);
-                }
-            }
-        }
-
-        vector<float> dependency(n);
-        while (!stk.empty()) {
-            auto w = stk.top();
-            stk.pop();
-            for (auto v : preds[w]) {
-                dependency[v] += static_cast<float>(num_paths[v]) / num_paths[w] * (1.0f + dependency[w]);
-            }
-            if (w != s) {
-                centrality[w] += dependency[w];
-            }
-        }
-    }
-
-    return centrality;
-}
-
-static void save_to_file(string path, const vector<float> &centrality) {
+static void save_to_file(string path, const vector<double> &centrality) {
     ofstream ofs;
     ofs.open(path);
 
     if (!ofs.is_open()) {
-        cerr << "Cannot open file \"" << path << "\"." << endl;
+        cout << "Cannot open file \"" << path << "\"." << endl;
         exit(1);
     }
 
@@ -147,11 +90,18 @@ static int grid_size(int min_threads_count, int block_size) {
     return (min_threads_count + block_size - 1) / block_size;
 }
 
-static vector<float> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
+static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
     host::VirtualCSR host_vcsr(edges, 4);
     device::GraphDataVirtual gdata(move(edges), 4); // this moves data to device
 
     const int block_size = 512; // TODO
+
+    // Initialize betweeness centrality array with zeros.
+    {
+        static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+        fill<<<num_blocks, block_size>>>(gdata.bc, gdata.num_real_verts, 0.0);
+        HANDLE_ERROR(cudaPeekAtLastError());
+    }
 
     // ALGORITHM BEGIN
     DeviceBool cont;
@@ -160,7 +110,7 @@ static vector<float> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
         // Reset values, because they are source-specific.
         {
             static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
-            bc_virtual_initialize<<<num_blocks, block_size>>>(gdata, s);
+            bc_virtual_prep_fwd<<<num_blocks, block_size>>>(gdata, s);
             HANDLE_ERROR(cudaPeekAtLastError());
         }
 
@@ -170,24 +120,44 @@ static vector<float> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
             cont.set_value(false);
             {
                 static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
-                bc_virtual_forward<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
+                bc_virtual_fwd<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
                 HANDLE_ERROR(cudaPeekAtLastError());
             }
             layer++;
         } while(cont.get_value());
 
+        // Initialize delta values.
+        {
+            static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+            bc_virtual_prep_bwd<<<num_blocks, block_size>>>(gdata);
+            HANDLE_ERROR(cudaPeekAtLastError());
+        }
+
         // Run backward phase
-        // TODO
+        while (layer > 1) {
+            layer--;
+            {
+                static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
+                bc_virtual_bwd<<<num_blocks, block_size>>>(gdata, layer);
+                HANDLE_ERROR(cudaPeekAtLastError());
+            }
+        }
 
         // Update bc values.
-        // TODO
+        {
+            static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+            bc_virtual_update<<<num_blocks, block_size>>>(gdata, s);
+            HANDLE_ERROR(cudaPeekAtLastError());
+        }
     }
     
     // ALGORITHM END
 
+    vector<double> betweeness(gdata.num_real_verts);
+    HANDLE_ERROR(cudaMemcpy(betweeness.data(), gdata.bc, sizeof(double) * betweeness.size(), cudaMemcpyDeviceToHost));
+    
     gdata.free();
-
-    return vector<float>(2);
+    return betweeness;
 }
 
 int main(int argc, char *argv[]) {
