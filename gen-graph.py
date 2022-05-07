@@ -13,29 +13,25 @@ def _index_to_edge(num_nodes, index):
     v = index % num_nodes
     return (u, v)
 
-def generate_graph(num_nodes, num_edges):
-    assert num_edges <= _num_all_edges(num_edges)
+def _edge_generator(num_nodes):
+    for x in range(num_nodes - 1):
+        for y in range(x + 1, num_nodes):
+            yield (x, y)
 
-    edges = map(lambda idx: _index_to_edge(num_nodes, idx), range(_num_all_edges(num_nodes)))
-    edges = filter(lambda e: e[0] != e[1], edges)
-    edges = list(edges)
+def generate_graph(num_nodes, num_edges):
+    assert num_edges <= _num_all_edges(num_nodes)
+
+    egen = _edge_generator(num_nodes)
+    edges = list(egen)
     edges = random.sample(edges, num_edges)
     assert len(edges) == num_edges
-    return edges
-
-
-def morph_graph(edges):
-    occuring_nodes = set()
-    for u, v in edges:
-        occuring_nodes.add(u)
-        occuring_nodes.add(v)
-
-    remapping = {k:v for v, k in enumerate(occuring_nodes)}
-    return [(remapping[u], remapping[v]) for u, v in edges]
+    return list(edges)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate undirected graph.')
+    parser.add_argument('--nodes', type=int, required=True,
+                            help='the number of nodes of the graph')
     parser.add_argument('--edges', type=int, required=True,
                             help='the number of edges of the graph')
     parser.add_argument('--seed', type=int, required=False,
@@ -47,11 +43,11 @@ if __name__ == '__main__':
         random.seed(args.seed)
         
     
+    num_nodes = args.nodes
     num_edges = args.edges
 
-    edges = generate_graph(num_edges, num_edges)
-    edges = morph_graph(edges)
-    edges = sorted(edges, key=lambda p: p[0])
+    edges = generate_graph(num_nodes, num_edges)
+    edges = sorted(edges)
 
     for edge in edges:
         print(*edge)
