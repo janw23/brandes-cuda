@@ -7,12 +7,6 @@ from cv2 import remap
 def _num_all_edges(num_nodes):
     return (num_nodes - 1) * num_nodes // 2
 
-def _index_to_edge(num_nodes, index):
-    assert index < _num_all_edges(num_nodes)
-    u = index // num_nodes
-    v = index % num_nodes
-    return (u, v)
-
 def _edge_generator(num_nodes):
     for x in range(num_nodes - 1):
         for y in range(x + 1, num_nodes):
@@ -32,7 +26,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate undirected graph.')
     parser.add_argument('--nodes', type=int, required=True,
                             help='the number of nodes of the graph')
-    parser.add_argument('--edges', type=int, required=True,
+    parser.add_argument('--edges', type=int, required=False,
                             help='the number of edges of the graph')
     parser.add_argument('--seed', type=int, required=False,
                             help='seed for the random number generator')
@@ -44,7 +38,7 @@ if __name__ == '__main__':
         
     
     num_nodes = args.nodes
-    num_edges = args.edges
+    num_edges = args.edges or random.randint(1, _num_all_edges(num_nodes))
 
     edges = generate_graph(num_nodes, num_edges)
     edges = sorted(edges)
