@@ -75,7 +75,7 @@ struct DeviceBool {
     }
 
     void set_value(bool val) {
-        HANDLE_ERROR(cudaMemcpy(device_data, &val, sizeof(bool), cudaMemcpyHostToDevice));
+        HANDLE_ERROR(cudaMemset(device_data, val, sizeof(bool)));
     }
 
     bool get_value() {
@@ -85,6 +85,38 @@ struct DeviceBool {
     }
 };
 
+static void print_progress(int done, int all) {
+    static int prev = -1;
+    int percent = 100.0f * done / all;
+    if (prev != percent) {
+        cout << percent << "%\n";
+        prev = percent;
+    }
+}
+
+class Timer {
+    cudaEvent_t _start, _stop;
+
+public:
+    Timer() {
+        cudaEventCreate(&_start);
+        cudaEventCreate(&_stop);
+        cudaEventRecord(_start);
+    }
+
+    void stop() {
+        cudaEventRecord(_stop);
+    }
+
+    ~Timer() {
+        cudaEventSynchronize(_stop);
+        float ms;
+        cudaEventElapsedTime(&ms, _start, _stop);
+        cudaEventDestroy(_start);
+        cudaEventDestroy(_stop);
+        cout << "Elapsed kernels time: " << ms << "\n";
+    }
+};
 
 // Returns grid_size based on the overall required number of threads and block size.
 static int grid_size(int min_threads_count, int block_size) {
@@ -92,16 +124,14 @@ static int grid_size(int min_threads_count, int block_size) {
 }
 
 static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
-    CUDATimer cuda_timer;
-
     host::VirtualCSR host_vcsr(edges, 4);
     device::GraphDataVirtual gdata(move(edges), 4); // this moves data to device
 
     const int block_size = 512; // TODO
+    Timer timer;
 
     // Initialize betweeness centrality array with zeros.
     {
-        auto kt = cuda_timer.kernel_timer(); // RAII style timer
         static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
         fill<<<num_blocks, block_size>>>(gdata.bc, gdata.num_real_verts, 0.0);
         HANDLE_ERROR(cudaPeekAtLastError());
@@ -111,10 +141,9 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
     DeviceBool cont;
 
     for (int s = 0; s < gdata.num_real_verts; s++) { // for each vertex as a source
-        cout << (s+1) << " / " << gdata.num_real_verts << "\n";
+        print_progress(s+1, gdata.num_real_verts); // TODO RM
         // Reset values, because they are source-specific.
         {
-            auto kt = cuda_timer.kernel_timer(); // RAII style timer
             static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
             bc_virtual_prep_fwd<<<num_blocks, block_size>>>(gdata, s);
             HANDLE_ERROR(cudaPeekAtLastError());
@@ -124,18 +153,18 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
         int layer = 0;
         do {
             cont.set_value(false);
-            {
-                auto kt = cuda_timer.kernel_timer(); // RAII style timer
-                static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
-                bc_virtual_fwd<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
-                HANDLE_ERROR(cudaPeekAtLastError());
+            for (int tries = 0; tries < 5; tries++) { // This optimizes device -> host memory transfers
+                {
+                    static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
+                    bc_virtual_fwd<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
+                    HANDLE_ERROR(cudaPeekAtLastError());
+                }
+                layer++;
             }
-            layer++;
         } while(cont.get_value());
 
         // Initialize delta values.
         {
-            auto kt = cuda_timer.kernel_timer(); // RAII style timer
             static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
             bc_virtual_prep_bwd<<<num_blocks, block_size>>>(gdata);
             HANDLE_ERROR(cudaPeekAtLastError());
@@ -145,7 +174,6 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
         while (layer > 1) {
             layer--;
             {
-                auto kt = cuda_timer.kernel_timer(); // RAII style timer
                 static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
                 bc_virtual_bwd<<<num_blocks, block_size>>>(gdata, layer);
                 HANDLE_ERROR(cudaPeekAtLastError());
@@ -154,20 +182,18 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
 
         // Update bc values.
         {
-            auto kt = cuda_timer.kernel_timer(); // RAII style timer
             static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
             bc_virtual_update<<<num_blocks, block_size>>>(gdata, s);
             HANDLE_ERROR(cudaPeekAtLastError());
         }
     }
-    
+    timer.stop();
     // ALGORITHM END
 
     vector<double> betweeness(gdata.num_real_verts);
     HANDLE_ERROR(cudaMemcpy(betweeness.data(), gdata.bc, sizeof(double) * betweeness.size(), cudaMemcpyDeviceToHost));
     
     gdata.free();
-    cerr << "Kernels execution time: " << (int) cuda_timer.elapsed_time_kernels() << "ms\n";
     return betweeness;
 }
 

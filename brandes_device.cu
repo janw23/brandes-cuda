@@ -70,6 +70,8 @@ void bc_virtual_fwd(device::GraphDataVirtual gdata, int layer, bool *cont) {
     // There's one thread per virtual vertex;
     int virt = blockIdx.x * blockDim.x + threadIdx.x;
     // if (virt == 0) printf("forward(layer=%d)\n", layer); // TODO remove
+    // TODO można trochę zoptymalizować gdata.vptrs wczytując zakres od pamięci dzielonej
+
     if (virt >= gdata.num_virtual_verts) return;
 
     int u = gdata.vmap[virt]; // u is the real vertex associated with the current virtual vertex
@@ -92,7 +94,6 @@ void bc_virtual_prep_bwd(device::GraphDataVirtual gdata) {
     int real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("prep_backward\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
-
     gdata.delta[real] = 1.0 / gdata.num_paths[real];
 }
 
