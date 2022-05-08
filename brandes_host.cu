@@ -4,6 +4,54 @@
 
 using namespace std;
 
+CUDATimer::Timer::Timer(cudaEvent_t start, cudaEvent_t stop) : stop{stop} {
+    cudaEventRecord(start);
+}
+
+CUDATimer::Timer::~Timer() {
+    cudaEventRecord(stop);
+}
+
+CUDATimer::Timer CUDATimer::kernel_timer() {
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    kernel_evts.emplace_back(start, stop);
+    return Timer(start, stop);
+}
+
+
+float CUDATimer::elapsed_time_kernels() {
+    float time = 0;
+    for (auto evt : kernel_evts) {
+        cudaEventSynchronize(evt.second);
+        float ms;
+        cudaEventElapsedTime(&ms, evt.first, evt.second);
+        time += ms;
+    }
+    return time;
+}
+
+float CUDATimer::elapsed_time_memcpy() {
+    float time = 0;
+    for (auto evt : memcpy_evts) {
+        cudaEventSynchronize(evt.second);
+        float ms;
+        cudaEventElapsedTime(&ms, evt.first, evt.second);
+        time += ms;
+    }
+    return time;
+}
+
+CUDATimer::~CUDATimer() {
+    for (auto evt : kernel_evts) {
+        cudaEventDestroy(evt.first);
+        cudaEventDestroy(evt.second);
+    }
+}
+
+
 int num_verts(const vector<pair<int, int>> &edges) {
     // Compute number of vertices based on maximum vertex label.
     int n = 0;

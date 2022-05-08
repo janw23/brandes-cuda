@@ -56,7 +56,7 @@ __global__
 void bc_virtual_prep_fwd(device::GraphDataVirtual gdata, int source) {
     // There's one thread per real vertex;
     int real = blockIdx.x * blockDim.x + threadIdx.x;
-    if (real == 0) printf("prep_forward(source=%d)\n", source); // TODO remove
+    // if (real == 0) printf("prep_forward(source=%d)\n", source); // TODO remove
     if (real >= gdata.num_real_verts) return;
 
     int is_source = real == source;
@@ -69,7 +69,7 @@ __global__
 void bc_virtual_fwd(device::GraphDataVirtual gdata, int layer, bool *cont) {
     // There's one thread per virtual vertex;
     int virt = blockIdx.x * blockDim.x + threadIdx.x;
-    if (virt == 0) printf("forward(layer=%d)\n", layer); // TODO remove
+    // if (virt == 0) printf("forward(layer=%d)\n", layer); // TODO remove
     if (virt >= gdata.num_virtual_verts) return;
 
     int u = gdata.vmap[virt]; // u is the real vertex associated with the current virtual vertex
@@ -90,7 +90,7 @@ void bc_virtual_fwd(device::GraphDataVirtual gdata, int layer, bool *cont) {
 __global__
 void bc_virtual_prep_bwd(device::GraphDataVirtual gdata) {
     int real = blockIdx.x * blockDim.x + threadIdx.x;
-    if (real == 0) printf("prep_backward\n"); // TODO remove
+    // if (real == 0) printf("prep_backward\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
 
     gdata.delta[real] = 1.0 / gdata.num_paths[real];
@@ -100,7 +100,7 @@ __global__
 void bc_virtual_bwd(device::GraphDataVirtual gdata, int layer) {
     // There's one thread per virtual vertex;
     int virt = blockIdx.x * blockDim.x + threadIdx.x;
-    if (virt == 0) printf("backward(layer=%d)\n", layer); // TODO remove
+    // if (virt == 0) printf("backward(layer=%d)\n", layer); // TODO remove
     if (virt >= gdata.num_virtual_verts) return;
 
     int u = gdata.vmap[virt];
@@ -120,13 +120,13 @@ __global__
 void bc_virtual_update(device::GraphDataVirtual gdata, int source) {
     // There's one thread per real vertex;
     int real = blockIdx.x * blockDim.x + threadIdx.x;
-    if (real == 0) printf("update()\n"); // TODO remove
+    // if (real == 0) printf("update()\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
 
     // TODO gdata.dist[real] != -1 does not update verts
     // TODO which were not reachable from the current source
     // TODO but maybe this should be done differently?
-    
+
     if (real != source && gdata.dist[real] != -1)
         gdata.bc[real] += gdata.num_paths[real] * gdata.delta[real] - 1.0;
 }

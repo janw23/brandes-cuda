@@ -6,7 +6,9 @@
 *.cubin
 *.fatbin
 
+
 /brandes-verify/
+/facebook/
 .vscode/
 
 notes.txt
