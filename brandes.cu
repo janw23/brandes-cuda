@@ -48,15 +48,6 @@ static void save_to_file(string path, const vector<double> &centrality) {
     ofs.close();
 }
 
-static void print_progress(int done, int all) {
-    static int prev = -1;
-    int percent = 100.0f * done / all;
-    if (prev != percent) {
-        cout << percent << "%\n";
-        prev = percent;
-    }
-}
-
 static vector<double> betweeness_on_gpu(const vector<pair<uint32_t, uint32_t>> &edges) {
     cudaEvent_t kernels_start, kernels_stop, mem_start, mem_stop;
     HANDLE_ERROR(cudaEventCreate(&kernels_start));
@@ -64,12 +55,12 @@ static vector<double> betweeness_on_gpu(const vector<pair<uint32_t, uint32_t>> &
     HANDLE_ERROR(cudaEventCreate(&mem_start));
     HANDLE_ERROR(cudaEventCreate(&mem_stop));
 
-    HANDLE_ERROR(cudaEventRecord(mem_start)); // TODO currently this also measures generating vcsr on host
+    HANDLE_ERROR(cudaEventRecord(mem_start));
     GraphDataVirtual gdata(move(edges), 4); // this moves data to device
 
     HANDLE_ERROR(cudaEventRecord(kernels_start));
 
-    const int block_size = 512; // TODO
+    const int block_size = 512; 
     // Initialize betweeness centrality array with zeros.
     {
         static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
@@ -81,7 +72,6 @@ static vector<double> betweeness_on_gpu(const vector<pair<uint32_t, uint32_t>> &
     DeviceBool cont;
 
     for (uint32_t s = 0; s < gdata.num_real_verts; s++) { // for each vertex as a source
-        print_progress(s+1, gdata.num_real_verts); // TODO RM
         // Reset values, because they are source-specific.
         {
             static const uint32_t num_blocks = grid_size(gdata.num_real_verts, block_size);
