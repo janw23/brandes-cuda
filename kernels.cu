@@ -1,15 +1,12 @@
-#include "brandes_device.cuh"
-#include "brandes_host.cuh"
+#include "kernels.cuh"
+#include "utils.cuh"
 #include "errors.h"
-
-#include <iostream> // TODO remove
-#include <cstdio> // TODO remove
 
 using namespace std;
 
-device::GraphDataVirtual::GraphDataVirtual(const vector<pair<int, int>> &edges, int mdeg) {
+GraphDataVirtual::GraphDataVirtual(const vector<pair<int, int>> &edges, int mdeg) {
     num_real_verts = num_verts(edges);
-    host::VirtualCSR vcsr(move(edges), mdeg);
+    VirtualCSR vcsr(move(edges), mdeg);
     num_virtual_verts = vcsr.vmap.size();
 
     HANDLE_ERROR(cudaMalloc(&vmap, sizeof(*vmap) * vcsr.vmap.size()));
@@ -27,7 +24,7 @@ device::GraphDataVirtual::GraphDataVirtual(const vector<pair<int, int>> &edges, 
     HANDLE_ERROR(cudaMalloc(&bc, sizeof(*bc) * num_real_verts));
 }
 
-void device::GraphDataVirtual::free() {
+void GraphDataVirtual::free() {
     HANDLE_ERROR(cudaFree(vmap));
     vmap = NULL;
     HANDLE_ERROR(cudaFree(vptrs));
@@ -53,7 +50,7 @@ void fill(double *data, int size, double value) {
 }
 
 __global__
-void bc_virtual_prep_fwd(device::GraphDataVirtual gdata, int source) {
+void bc_virtual_prep_fwd(GraphDataVirtual gdata, int source) {
     // There's one thread per real vertex;
     int real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("prep_forward(source=%d)\n", source); // TODO remove
@@ -66,7 +63,7 @@ void bc_virtual_prep_fwd(device::GraphDataVirtual gdata, int source) {
 }
 
 __global__
-void bc_virtual_fwd(device::GraphDataVirtual gdata, int layer, bool *cont) {
+void bc_virtual_fwd(GraphDataVirtual gdata, int layer, bool *cont) {
     // There's one thread per virtual vertex;
     int virt = blockIdx.x * blockDim.x + threadIdx.x;
     // if (virt == 0) printf("forward(layer=%d)\n", layer); // TODO remove
@@ -90,7 +87,7 @@ void bc_virtual_fwd(device::GraphDataVirtual gdata, int layer, bool *cont) {
 }
 
 __global__
-void bc_virtual_prep_bwd(device::GraphDataVirtual gdata) {
+void bc_virtual_prep_bwd(GraphDataVirtual gdata) {
     int real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("prep_backward\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
@@ -98,7 +95,7 @@ void bc_virtual_prep_bwd(device::GraphDataVirtual gdata) {
 }
 
 __global__
-void bc_virtual_bwd(device::GraphDataVirtual gdata, int layer) {
+void bc_virtual_bwd(GraphDataVirtual gdata, int layer) {
     // There's one thread per virtual vertex;
     int virt = blockIdx.x * blockDim.x + threadIdx.x;
     // if (virt == 0) printf("backward(layer=%d)\n", layer); // TODO remove
@@ -118,7 +115,7 @@ void bc_virtual_bwd(device::GraphDataVirtual gdata, int layer) {
 }
 
 __global__
-void bc_virtual_update(device::GraphDataVirtual gdata, int source) {
+void bc_virtual_update(GraphDataVirtual gdata, int source) {
     // There's one thread per real vertex;
     int real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("update()\n"); // TODO remove
