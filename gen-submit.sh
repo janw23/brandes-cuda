@@ -1,6 +1,6 @@
-rm -r submit
+rm -rf submit
 mkdir submit
 
-for f in brandes.cu brandes_device.cu brandes_device.cuh brandes_host.cu brandes_host.cuh errors.h Makefile ../tests/gowalla.txt
+for f in brandes.cu utils.cuh utils.cu kernels.cuh kernels.cu errors.h Makefile ../tests/gowalla.txt
   do cp -r $f submit/
 done
