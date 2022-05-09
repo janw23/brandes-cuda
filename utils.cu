@@ -6,12 +6,14 @@ using namespace std;
 
 DeviceBool::DeviceBool(bool initial) {
     HANDLE_ERROR(cudaMalloc(&device_data, sizeof(bool)));
+    HANDLE_ERROR(cudaMallocHost(&host_data, sizeof(bool)));
     set_value(initial); // default value
 }
 
 DeviceBool::DeviceBool() : DeviceBool(false) {}
 
 DeviceBool::~DeviceBool() {
+    HANDLE_ERROR(cudaFreeHost(host_data));
     HANDLE_ERROR(cudaFree(device_data));
     device_data = NULL;
 }
@@ -21,9 +23,8 @@ void DeviceBool::set_value(bool val) {
 }
 
 bool DeviceBool::get_value() {
-    bool val;
-    HANDLE_ERROR(cudaMemcpy(&val, device_data, sizeof(bool), cudaMemcpyDeviceToHost));
-    return val;
+    HANDLE_ERROR(cudaMemcpy(host_data, device_data, sizeof(bool), cudaMemcpyDeviceToHost));
+    return *host_data;
 }
 
 uint32_t num_verts(const vector<pair<uint32_t, uint32_t>> &edges) {

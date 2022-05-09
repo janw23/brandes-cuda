@@ -6,6 +6,7 @@
 
 struct DeviceBool {
     bool *device_data;
+    bool *host_data;
 
     DeviceBool(bool initial);
     DeviceBool();
