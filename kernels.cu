@@ -53,7 +53,6 @@ __global__
 void bc_virtual_prep_fwd(GraphDataVirtual gdata, uint32_t source) {
     // There's one thread per real vertex;
     uint32_t real = blockIdx.x * blockDim.x + threadIdx.x;
-    // if (real == 0) printf("prep_forward(source=%d)\n", source); // TODO remove
     if (real >= gdata.num_real_verts) return;
 
     bool is_source = real == source;
@@ -66,15 +65,12 @@ __global__
 void bc_virtual_fwd(GraphDataVirtual gdata, int32_t layer, bool *cont) {
     // There's one thread per virtual vertex;
     uint32_t virt = blockIdx.x * blockDim.x + threadIdx.x;
-    // if (virt == 0) printf("forward(layer=%d)\n", layer); // TODO remove
-    // TODO można trochę zoptymalizować gdata.vptrs wczytując zakres od pamięci dzielonej
-
     if (virt >= gdata.num_virtual_verts) return;
 
     uint32_t u = gdata.vmap[virt]; // u is the real vertex associated with the current virtual vertex
     if (gdata.dist[u] == layer) {
         for (uint32_t idx = gdata.vptrs[virt]; idx < gdata.vptrs[virt+1]; idx++) { // iterate over adjacent vertices
-            int v = gdata.adjs[idx]; // v is the neighbour of current virtual vertex
+            uint32_t v = gdata.adjs[idx]; // v is the neighbour of current virtual vertex
             if (gdata.dist[v] == -1) {
                 gdata.dist[v] = layer + 1;
                 *cont = true;
@@ -89,7 +85,6 @@ void bc_virtual_fwd(GraphDataVirtual gdata, int32_t layer, bool *cont) {
 __global__
 void bc_virtual_prep_bwd(GraphDataVirtual gdata) {
     uint32_t real = blockIdx.x * blockDim.x + threadIdx.x;
-    // if (real == 0) printf("prep_backward\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
     gdata.delta[real] = 1.0 / gdata.num_paths[real];
 }
@@ -98,7 +93,6 @@ __global__
 void bc_virtual_bwd(GraphDataVirtual gdata, int32_t layer) {
     // There's one thread per virtual vertex;
     uint32_t virt = blockIdx.x * blockDim.x + threadIdx.x;
-    // if (virt == 0) printf("backward(layer=%d)\n", layer); // TODO remove
     if (virt >= gdata.num_virtual_verts) return;
 
     uint32_t u = gdata.vmap[virt];
@@ -118,12 +112,7 @@ __global__
 void bc_virtual_update(GraphDataVirtual gdata, uint32_t source) {
     // There's one thread per real vertex;
     uint32_t real = blockIdx.x * blockDim.x + threadIdx.x;
-    // if (real == 0) printf("update()\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
-
-    // TODO gdata.dist[real] != -1 does not update verts
-    // TODO which were not reachable from the current source
-    // TODO but maybe this should be done differently?
 
     if (real != source && gdata.dist[real] != -1)
         gdata.bc[real] += gdata.num_paths[real] * gdata.delta[real] - 1.0;

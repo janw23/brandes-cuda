@@ -138,6 +138,9 @@ static vector<double> betweeness_on_gpu(const vector<pair<uint32_t, uint32_t>> &
 
     gdata.free();
 
+    HANDLE_ERROR(cudaEventSynchronize(kernels_stop));
+    HANDLE_ERROR(cudaEventSynchronize(mem_stop));
+
     float kernels_time, mem_time;
     HANDLE_ERROR(cudaEventElapsedTime(&kernels_time, kernels_start, kernels_stop));
     HANDLE_ERROR(cudaEventElapsedTime(&mem_time, mem_start, mem_stop));
