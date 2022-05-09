@@ -1,27 +1,16 @@
-#include "brandes_host.cuh"
-#include "brandes_device.cuh"
+#include "kernels.cuh"
+#include "utils.cuh"
 #include "errors.h"
 
-#include <iostream>
-#include <fstream>
-#include <string>
 #include <vector>
-#include <algorithm>
-#include <queue>
-#include <stack>
-#include <cassert>
+#include <fstream>
+#include <iostream>
 
 using namespace std;
 
-// TODO correct int data types
-
-static void print_usage() {
-    cout << "Program usage: ./brandes input-file output-file" << endl;
-}
-
 static void check_args(int argc, char *argv[]) {
     if (argc != 3 || !strcmp(argv[1], "") || !strcmp(argv[2], "")) {
-        print_usage();
+        cout << "Program usage: ./brandes input-file output-file" << endl;
         exit(1);
     }
 }
@@ -41,7 +30,7 @@ static vector<pair<int, int>> load_edges(string path) {
 
     ifs.close();
     return edges;
-} 
+}
 
 static void save_to_file(string path, const vector<double> &centrality) {
     ofstream ofs;
@@ -59,32 +48,6 @@ static void save_to_file(string path, const vector<double> &centrality) {
     ofs.close();
 }
 
-struct DeviceBool {
-    bool *device_data;
-
-    DeviceBool(bool initial) {
-        HANDLE_ERROR(cudaMalloc(&device_data, sizeof(bool)));
-        set_value(initial); // default value
-    }
-
-    DeviceBool() : DeviceBool(false) {}
-
-    ~DeviceBool() {
-        HANDLE_ERROR(cudaFree(device_data));
-        device_data = NULL;
-    }
-
-    void set_value(bool val) {
-        HANDLE_ERROR(cudaMemset(device_data, val, sizeof(bool)));
-    }
-
-    bool get_value() {
-        bool val;
-        HANDLE_ERROR(cudaMemcpy(&val, device_data, sizeof(bool), cudaMemcpyDeviceToHost));
-        return val;
-    }
-};
-
 static void print_progress(int done, int all) {
     static int prev = -1;
     int percent = 100.0f * done / all;
@@ -94,42 +57,19 @@ static void print_progress(int done, int all) {
     }
 }
 
-class Timer {
-    cudaEvent_t _start, _stop;
-
-public:
-    Timer() {
-        cudaEventCreate(&_start);
-        cudaEventCreate(&_stop);
-        cudaEventRecord(_start);
-    }
-
-    void stop() {
-        cudaEventRecord(_stop);
-    }
-
-    ~Timer() {
-        cudaEventSynchronize(_stop);
-        float ms;
-        cudaEventElapsedTime(&ms, _start, _stop);
-        cudaEventDestroy(_start);
-        cudaEventDestroy(_stop);
-        cout << "Elapsed kernels time: " << ms << "\n";
-    }
-};
-
-// Returns grid_size based on the overall required number of threads and block size.
-static int grid_size(int min_threads_count, int block_size) {
-    return (min_threads_count + block_size - 1) / block_size;
-}
-
 static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
-    host::VirtualCSR host_vcsr(edges, 4);
-    device::GraphDataVirtual gdata(move(edges), 4); // this moves data to device
+    cudaEvent_t kernels_start, kernels_stop, mem_start, mem_stop;
+    HANDLE_ERROR(cudaEventCreate(&kernels_start));
+    HANDLE_ERROR(cudaEventCreate(&kernels_stop));
+    HANDLE_ERROR(cudaEventCreate(&mem_start));
+    HANDLE_ERROR(cudaEventCreate(&mem_stop));
+
+    HANDLE_ERROR(cudaEventRecord(mem_start)); // TODO currently this also measures generating vcsr on host
+    GraphDataVirtual gdata(move(edges), 4); // this moves data to device
+
+    HANDLE_ERROR(cudaEventRecord(kernels_start));
 
     const int block_size = 512; // TODO
-    Timer timer;
-
     // Initialize betweeness centrality array with zeros.
     {
         static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
@@ -187,15 +127,32 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
             HANDLE_ERROR(cudaPeekAtLastError());
         }
     }
-    timer.stop();
+
+    HANDLE_ERROR(cudaEventRecord(kernels_stop));
+
     // ALGORITHM END
 
     vector<double> betweeness(gdata.num_real_verts);
     HANDLE_ERROR(cudaMemcpy(betweeness.data(), gdata.bc, sizeof(double) * betweeness.size(), cudaMemcpyDeviceToHost));
-    
+    HANDLE_ERROR(cudaEventRecord(mem_stop));
+
     gdata.free();
+
+    float kernels_time, mem_time;
+    HANDLE_ERROR(cudaEventElapsedTime(&kernels_time, kernels_start, kernels_stop));
+    HANDLE_ERROR(cudaEventElapsedTime(&mem_time, mem_start, mem_stop));
+
+    cerr << round(kernels_time) << "\n";
+    cerr << round(mem_time) << "\n";
+
+    HANDLE_ERROR(cudaEventDestroy(kernels_start));
+    HANDLE_ERROR(cudaEventDestroy(kernels_stop));
+    HANDLE_ERROR(cudaEventDestroy(mem_start));
+    HANDLE_ERROR(cudaEventDestroy(mem_stop));
+
     return betweeness;
 }
+
 
 int main(int argc, char *argv[]) {
     check_args(argc, argv);

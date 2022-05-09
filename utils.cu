@@ -1,56 +1,30 @@
-#include "brandes_host.cuh"
-
+#include "utils.cuh"
+#include "errors.h"
 #include <algorithm>
 
 using namespace std;
 
-CUDATimer::Timer::Timer(cudaEvent_t start, cudaEvent_t stop) : stop{stop} {
-    cudaEventRecord(start);
+DeviceBool::DeviceBool(bool initial) {
+    HANDLE_ERROR(cudaMalloc(&device_data, sizeof(bool)));
+    set_value(initial); // default value
 }
 
-CUDATimer::Timer::~Timer() {
-    cudaEventRecord(stop);
+DeviceBool::DeviceBool() : DeviceBool(false) {}
+
+DeviceBool::~DeviceBool() {
+    HANDLE_ERROR(cudaFree(device_data));
+    device_data = NULL;
 }
 
-CUDATimer::Timer CUDATimer::kernel_timer() {
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    kernel_evts.emplace_back(start, stop);
-    return Timer(start, stop);
+void DeviceBool::set_value(bool val) {
+    HANDLE_ERROR(cudaMemset(device_data, val, sizeof(bool)));
 }
 
-
-float CUDATimer::elapsed_time_kernels() {
-    float time = 0;
-    for (auto evt : kernel_evts) {
-        cudaEventSynchronize(evt.second);
-        float ms;
-        cudaEventElapsedTime(&ms, evt.first, evt.second);
-        time += ms;
-    }
-    return time;
+bool DeviceBool::get_value() {
+    bool val;
+    HANDLE_ERROR(cudaMemcpy(&val, device_data, sizeof(bool), cudaMemcpyDeviceToHost));
+    return val;
 }
-
-float CUDATimer::elapsed_time_memcpy() {
-    float time = 0;
-    for (auto evt : memcpy_evts) {
-        cudaEventSynchronize(evt.second);
-        float ms;
-        cudaEventElapsedTime(&ms, evt.first, evt.second);
-        time += ms;
-    }
-    return time;
-}
-
-CUDATimer::~CUDATimer() {
-    for (auto evt : kernel_evts) {
-        cudaEventDestroy(evt.first);
-        cudaEventDestroy(evt.second);
-    }
-}
-
 
 int num_verts(const vector<pair<int, int>> &edges) {
     // Compute number of vertices based on maximum vertex label.
@@ -73,7 +47,7 @@ static vector<vector<int>> adjacency_lists(const vector<pair<int, int>> &edges) 
     return adjs;
 }
 
-host::VirtualCSR::VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
+VirtualCSR::VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
     auto graph = adjacency_lists(edges);
         
     for (int v = 0; v < graph.size(); v++) { // iterate over real verts
@@ -89,3 +63,9 @@ host::VirtualCSR::VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
 
     vptrs.push_back(adjs.size()); // add guard at the end of vptrs
 }
+
+// Returns grid_size based on the overall required number of threads and block size.
+int grid_size(int min_threads_count, int block_size) {
+    return (min_threads_count + block_size - 1) / block_size;
+}
+
