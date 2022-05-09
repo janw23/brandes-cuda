@@ -26,18 +26,18 @@ bool DeviceBool::get_value() {
     return val;
 }
 
-int num_verts(const vector<pair<int, int>> &edges) {
+uint32_t num_verts(const vector<pair<uint32_t, uint32_t>> &edges) {
     // Compute number of vertices based on maximum vertex label.
-    int n = 0;
+    uint32_t n = 0;
     for (const auto &edge : edges) n = max({n, edge.first, edge.second});
     n++;
     return n;
 }
 
 // Helper function which converts graph into adjacency lists representation.
-static vector<vector<int>> adjacency_lists(const vector<pair<int, int>> &edges) {
-    int n = num_verts(edges);
-    vector<vector<int>> adjs(n);
+static vector<vector<uint32_t>> adjacency_lists(const vector<pair<uint32_t, uint32_t>> &edges) {
+    uint32_t n = num_verts(edges);
+    vector<vector<uint32_t>> adjs(n);
 
     for (auto edge : edges) {
         adjs[edge.first].push_back(edge.second);
@@ -47,15 +47,15 @@ static vector<vector<int>> adjacency_lists(const vector<pair<int, int>> &edges) 
     return adjs;
 }
 
-VirtualCSR::VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
+VirtualCSR::VirtualCSR(const vector<pair<uint32_t, uint32_t>> &edges, uint32_t mdeg) {
     auto graph = adjacency_lists(edges);
         
-    for (int v = 0; v < graph.size(); v++) { // iterate over real verts
-        int u = 0; // index of adjacent vert in v's adjacency list
+    for (uint32_t v = 0; v < graph.size(); v++) { // iterate over real verts
+        uint32_t u = 0; // index of adjacent vert in v's adjacency list
         while (u < graph[v].size()) {
             vmap.push_back(v); // map new virtual vert to real vert v
             vptrs.push_back(adjs.size()); // mark the beginning of virtual vert's adjacency list
-            for (int deg = 0; deg < mdeg && u < graph[v].size(); deg++, u++) {
+            for (uint32_t deg = 0; deg < mdeg && u < graph[v].size(); deg++, u++) {
                 adjs.push_back(graph[v][u]);
             }
         }
@@ -65,7 +65,7 @@ VirtualCSR::VirtualCSR(const vector<pair<int, int>> &edges, int mdeg) {
 }
 
 // Returns grid_size based on the overall required number of threads and block size.
-int grid_size(int min_threads_count, int block_size) {
+uint32_t grid_size(uint32_t min_threads_count, uint32_t block_size) {
     return (min_threads_count + block_size - 1) / block_size;
 }
 

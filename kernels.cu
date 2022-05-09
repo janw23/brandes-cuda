@@ -4,7 +4,7 @@
 
 using namespace std;
 
-GraphDataVirtual::GraphDataVirtual(const vector<pair<int, int>> &edges, int mdeg) {
+GraphDataVirtual::GraphDataVirtual(const vector<pair<uint32_t, uint32_t>> &edges, uint32_t mdeg) {
     num_real_verts = num_verts(edges);
     VirtualCSR vcsr(move(edges), mdeg);
     num_virtual_verts = vcsr.vmap.size();
@@ -42,38 +42,38 @@ void GraphDataVirtual::free() {
 }
 
 __global__
-void fill(double *data, int size, double value) {
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    for (int i = tid; i < size; i += gridDim.x) {
+void fill(double *data, uint32_t size, double value) {
+    uint32_t tid = blockDim.x * blockIdx.x + threadIdx.x;
+    for (uint32_t i = tid; i < size; i += gridDim.x) {
         data[i] = value;
     }
 }
 
 __global__
-void bc_virtual_prep_fwd(GraphDataVirtual gdata, int source) {
+void bc_virtual_prep_fwd(GraphDataVirtual gdata, uint32_t source) {
     // There's one thread per real vertex;
-    int real = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("prep_forward(source=%d)\n", source); // TODO remove
     if (real >= gdata.num_real_verts) return;
 
-    int is_source = real == source;
+    bool is_source = real == source;
     gdata.num_paths[real] = is_source;
     gdata.dist[real] = is_source - 1;
     gdata.delta[real] = 0;
 }
 
 __global__
-void bc_virtual_fwd(GraphDataVirtual gdata, int layer, bool *cont) {
+void bc_virtual_fwd(GraphDataVirtual gdata, int32_t layer, bool *cont) {
     // There's one thread per virtual vertex;
-    int virt = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t virt = blockIdx.x * blockDim.x + threadIdx.x;
     // if (virt == 0) printf("forward(layer=%d)\n", layer); // TODO remove
     // TODO można trochę zoptymalizować gdata.vptrs wczytując zakres od pamięci dzielonej
 
     if (virt >= gdata.num_virtual_verts) return;
 
-    int u = gdata.vmap[virt]; // u is the real vertex associated with the current virtual vertex
+    uint32_t u = gdata.vmap[virt]; // u is the real vertex associated with the current virtual vertex
     if (gdata.dist[u] == layer) {
-        for (int idx = gdata.vptrs[virt]; idx < gdata.vptrs[virt+1]; idx++) { // iterate over adjacent vertices
+        for (uint32_t idx = gdata.vptrs[virt]; idx < gdata.vptrs[virt+1]; idx++) { // iterate over adjacent vertices
             int v = gdata.adjs[idx]; // v is the neighbour of current virtual vertex
             if (gdata.dist[v] == -1) {
                 gdata.dist[v] = layer + 1;
@@ -88,24 +88,24 @@ void bc_virtual_fwd(GraphDataVirtual gdata, int layer, bool *cont) {
 
 __global__
 void bc_virtual_prep_bwd(GraphDataVirtual gdata) {
-    int real = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("prep_backward\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
     gdata.delta[real] = 1.0 / gdata.num_paths[real];
 }
 
 __global__
-void bc_virtual_bwd(GraphDataVirtual gdata, int layer) {
+void bc_virtual_bwd(GraphDataVirtual gdata, int32_t layer) {
     // There's one thread per virtual vertex;
-    int virt = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t virt = blockIdx.x * blockDim.x + threadIdx.x;
     // if (virt == 0) printf("backward(layer=%d)\n", layer); // TODO remove
     if (virt >= gdata.num_virtual_verts) return;
 
-    int u = gdata.vmap[virt];
+    uint32_t u = gdata.vmap[virt];
     if (gdata.dist[u] == layer) {
         double sum = 0;
-        for (int idx = gdata.vptrs[virt]; idx < gdata.vptrs[virt+1]; idx++) { // iterate over adjacent vertices
-            int v = gdata.adjs[idx]; // v is the neighbour of current virtual vertex
+        for (uint32_t idx = gdata.vptrs[virt]; idx < gdata.vptrs[virt+1]; idx++) { // iterate over adjacent vertices
+            uint32_t v = gdata.adjs[idx]; // v is the neighbour of current virtual vertex
             if (gdata.dist[v] == layer + 1) {
                 sum += gdata.delta[v];
             }
@@ -115,9 +115,9 @@ void bc_virtual_bwd(GraphDataVirtual gdata, int layer) {
 }
 
 __global__
-void bc_virtual_update(GraphDataVirtual gdata, int source) {
+void bc_virtual_update(GraphDataVirtual gdata, uint32_t source) {
     // There's one thread per real vertex;
-    int real = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t real = blockIdx.x * blockDim.x + threadIdx.x;
     // if (real == 0) printf("update()\n"); // TODO remove
     if (real >= gdata.num_real_verts) return;
 

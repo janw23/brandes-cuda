@@ -15,7 +15,7 @@ static void check_args(int argc, char *argv[]) {
     }
 }
 
-static vector<pair<int, int>> load_edges(string path) {
+static vector<pair<uint32_t, uint32_t>> load_edges(string path) {
     ifstream ifs;
     ifs.open(path);
     if(!ifs.is_open()) {
@@ -23,9 +23,9 @@ static vector<pair<int, int>> load_edges(string path) {
         exit(1);
     }
 
-    vector<pair<int, int>> edges;
+    vector<pair<uint32_t, uint32_t>> edges;
 
-    int u, v;
+    uint32_t u, v;
     while(ifs >> u >> v) edges.emplace_back(u, v);
 
     ifs.close();
@@ -57,7 +57,7 @@ static void print_progress(int done, int all) {
     }
 }
 
-static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
+static vector<double> betweeness_on_gpu(const vector<pair<uint32_t, uint32_t>> &edges) {
     cudaEvent_t kernels_start, kernels_stop, mem_start, mem_stop;
     HANDLE_ERROR(cudaEventCreate(&kernels_start));
     HANDLE_ERROR(cudaEventCreate(&kernels_stop));
@@ -80,22 +80,22 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
     // ALGORITHM BEGIN
     DeviceBool cont;
 
-    for (int s = 0; s < gdata.num_real_verts; s++) { // for each vertex as a source
+    for (uint32_t s = 0; s < gdata.num_real_verts; s++) { // for each vertex as a source
         print_progress(s+1, gdata.num_real_verts); // TODO RM
         // Reset values, because they are source-specific.
         {
-            static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+            static const uint32_t num_blocks = grid_size(gdata.num_real_verts, block_size);
             bc_virtual_prep_fwd<<<num_blocks, block_size>>>(gdata, s);
             HANDLE_ERROR(cudaPeekAtLastError());
         }
 
         // Run forward phase.
-        int layer = 0;
+        int32_t layer = 0;
         do {
             cont.set_value(false);
             for (int tries = 0; tries < 2; tries++) { // This optimizes device -> host memory transfers
                 {
-                    static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
+                    static const uint32_t num_blocks = grid_size(gdata.num_virtual_verts, block_size);
                     bc_virtual_fwd<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
                     HANDLE_ERROR(cudaPeekAtLastError());
                 }
@@ -105,7 +105,7 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
 
         // Initialize delta values.
         {
-            static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+            static const uint32_t num_blocks = grid_size(gdata.num_real_verts, block_size);
             bc_virtual_prep_bwd<<<num_blocks, block_size>>>(gdata);
             HANDLE_ERROR(cudaPeekAtLastError());
         }
@@ -114,7 +114,7 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
         while (layer > 1) {
             layer--;
             {
-                static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
+                static const uint32_t num_blocks = grid_size(gdata.num_virtual_verts, block_size);
                 bc_virtual_bwd<<<num_blocks, block_size>>>(gdata, layer);
                 HANDLE_ERROR(cudaPeekAtLastError());
             }
@@ -122,7 +122,7 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
 
         // Update bc values.
         {
-            static const int num_blocks = grid_size(gdata.num_real_verts, block_size);
+            static const uint32_t num_blocks = grid_size(gdata.num_real_verts, block_size);
             bc_virtual_update<<<num_blocks, block_size>>>(gdata, s);
             HANDLE_ERROR(cudaPeekAtLastError());
         }
