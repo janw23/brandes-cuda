@@ -153,7 +153,7 @@ static vector<double> betweeness_on_gpu(const vector<pair<int, int>> &edges) {
         int layer = 0;
         do {
             cont.set_value(false);
-            for (int tries = 0; tries < 5; tries++) { // This optimizes device -> host memory transfers
+            for (int tries = 0; tries < 2; tries++) { // This optimizes device -> host memory transfers
                 {
                     static const int num_blocks = grid_size(gdata.num_virtual_verts, block_size);
                     bc_virtual_fwd<<<num_blocks, block_size>>>(gdata, layer, cont.device_data);
